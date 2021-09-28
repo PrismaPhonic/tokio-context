@@ -1,3 +1,85 @@
+//! # tokio-context
+//!
+//! Provides a Golang like Context functionality. A Context in this respect is an object that is passed
+//! around, primarily to async functions, that is used to determine if long running asynchronous
+//! tasks should continue to run, or terminate.
+//!
+//! You build a new Context by calling its `new()` constructor, which optionally takes a duration
+//! that the context should run for. Calling the `new()` constructor returns the new `Context`
+//! along with a `Handle`. The `Handle` can either have its `cancel()` method called,
+//! or it can simply be dropped to cancel the context.
+//!
+//! Please note that dropping the `Handle` **will** cancel the context.
+//!
+//! If the duration supplied during Context construction elapses, then the Context will also be cancelled.
+//!
+//! Here's one example of how you could use a passed in Context.
+//!
+//! ```rust
+//! use tokio::time;
+//! use tokio_context::Context;
+//! use std::time::Duration;
+//!
+//! async fn task_that_takes_too_long() {
+//!     time::sleep(time::Duration::from_secs(60)).await;
+//!     println!("done");
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     // We've decided that we want a long running asynchronous task to last for a maximum of 1
+//!     // second.
+//!     let (mut ctx, _handle) = Context::new(Some(Duration::from_secs(1)));
+//!     
+//!     tokio::select! {
+//!         _ = ctx.done() => return,
+//!         _ = task_that_takes_too_long() => panic!("should never have gotten here"),
+//!     }
+//! }
+//!
+//! ```
+//!
+//! While this may look no different than simply using tokio::time::timeout, we have retained a
+//! handle that we can use to explicitely cancel the context, and any additionally spawned
+//! contexts.
+//!
+//!
+//! ```rust
+//! use std::time::Duration;
+//! use tokio::time;
+//! use tokio::task;
+//! use tokio_context::Context;
+//!
+//! async fn task_that_takes_too_long(mut ctx: Context) {
+//!     tokio::select! {
+//!         _ = ctx.done() => println!("cancelled early due to context"),
+//!         _ = time::sleep(time::Duration::from_secs(60)) => println!("done"),
+//!     }
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (_, mut handle) = Context::new(None);
+//!
+//!     let mut join_handles = vec![];
+//!
+//!     for i in 0..10 {
+//!         let mut ctx = handle.spawn_ctx();
+//!         let handle = task::spawn(async { task_that_takes_too_long(ctx).await });
+//!         join_handles.push(handle);
+//!     }
+//!
+//!     // Will cancel all spawned contexts.
+//!     handle.cancel();
+//!
+//!     // Now all join handles should gracefully close.
+//!     for join in join_handles {
+//!         join.await.unwrap();
+//!     }
+//! }
+//!
+//! ```
+
 use std::time::Duration;
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::{sync::broadcast, time::Instant};
@@ -11,13 +93,13 @@ pub struct Context {
 }
 
 /// A handle returned from constructing a new `Context`. Used to cancel the context. You can
-/// explicitely call `cancel()`, or, you can simply drop the ContextHandle to cancel the context.
+/// explicitely call `cancel()`, or, you can simply drop the Handle to cancel the context.
 ///
 /// It's also used to spawn new contexts. This fits cleaner into Rusts ownership system. We can
 /// only create new receivers by asking for them from the underlying Sender. This also ensures that
 /// only the owner of the context handle can generate more contexts for its chidlren.
 pub struct Handle {
-    /// Copied over from context to allow us to spawn new contexts off the handle. This should be
+    /// Allows us to spawn new contexts off the handle. This should be
     /// fine to clone because Instant is an instant in time, calculated at context construction as
     /// duration after construction time. It's an instant in time to be compared against, so
     /// results of future contexts spawned off this handle should be the same.
@@ -30,8 +112,7 @@ impl Handle {
     /// Cancels the Context, ensuring that done() returns immediately.
     ///
     /// We only need to drop the handle, which will drop the sender. Doing so will close the
-    /// channel sending a final `None` signal down the channel, causing `done()` to immediately
-    /// return.
+    /// channel, causing `done()` to immediately return.
     pub fn cancel(self) {}
 
     /// Will spawn a context identical to the context that was created along with this Handle. Used
