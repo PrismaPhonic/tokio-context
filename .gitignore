@@ -1,0 +1,15 @@
+target/
+**/target/
+docs/book/
+.idea/
+.DS_Store
+.terraform
+.terraform.lock.hcl
+.terraform-version
+provider.tf
+*.tfvars
+*.tfstate
+*.tfstate.backup
+*.vi
+*.emacs
+tags
