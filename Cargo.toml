@@ -21,3 +21,6 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 tokio = { version = "1.12.0", features = ["macros", "sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1.12.0", features = ["macros", "sync", "time", "rt", "rt-multi-thread"] }

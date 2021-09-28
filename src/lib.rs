@@ -157,3 +157,32 @@ impl Context {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn cancel_handle_cancels_context() {
+        let (mut ctx, handle) = Context::new(None);
+
+        handle.cancel();
+
+        tokio::select! {
+            _ = ctx.done() => assert!(true),
+            _ = tokio::time::sleep(Duration::from_millis(1)) => assert!(false),
+        }
+    }
+
+    #[tokio::test]
+    async fn duration_cancels_context() {
+        // Note that we can't simply drop the handle here or the context will be cancelled.
+        let (mut ctx, _handle) = Context::new(Some(Duration::from_millis(10)));
+
+        tokio::select! {
+            _ = ctx.done() => assert!(true),
+            _ = tokio::time::sleep(Duration::from_millis(15)) => assert!(false),
+        }
+    }
+}
