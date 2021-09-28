@@ -1,10 +1,23 @@
 [package]
 name = "tokio-context"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Peter Farr <Peter@PrismaPhonic.com>"]
+description = "Contexts for cancelling asynchronous tasks using tokio"
+keywords = ["async", "api", "tokio", "futures"]
+categories = ["rust-patterns", "development-tools", "asynchronous"]
+repository = "https://github.com/PrismaPhonic/tokio-context"
+documentation = "https://docs.rs/tokio-context"
+readme = "README.md"
+license = "MIT"
 edition = "2018"
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+    "README.md",
+]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[badges]
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 tokio = { version = "1.12.0", features = ["macros", "sync", "time"] }
