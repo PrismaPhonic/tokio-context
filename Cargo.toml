@@ -1,6 +1,6 @@
 [package]
 name = "tokio-context"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Peter Farr <Peter@PrismaPhonic.com>"]
 description = "Contexts for cancelling asynchronous tasks using tokio"
 keywords = ["async", "api", "tokio", "futures"]
