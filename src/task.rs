@@ -3,9 +3,9 @@ use tokio::sync::broadcast::Sender;
 use tokio::{sync::broadcast, time::Instant};
 
 /// Handles spawning tasks with a default timeout, which can also be cancelled by
-/// calling cancel() on the task controller. If a Duration is supplied during construction of the
-/// TaskController, then any tasks spawned by the TaskController will automatically be cancelled
-/// after the supplied duration has elapsed.
+/// calling `cancel` on the task controller. If a [`std::time::Duration`] is supplied during
+/// construction of the TaskController, then any tasks spawned by the TaskController will
+/// automatically be cancelled after the supplied duration has elapsed.
 ///
 /// This provides a different API from Context for the same end result. It's nicer to use when you
 /// don't need child futures to gracefully shutdown. In cases that you do require graceful shutdown
