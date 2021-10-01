@@ -6,15 +6,17 @@ use tokio::time::Instant;
 /// An object that is passed around to asynchronous functions that may be used to check if the
 /// function it was passed into should perform a graceful termination.
 ///
-/// You build a new Context by calling its [`Context::new`] constructor, which optionally takes a
-/// duration that the context should run for. Calling the [`Context::new`] constructor returns the
-/// new [`Context`] along with a [`Handle`]. The [`Handle`] can either have its `cancel` method
-/// called, or it can simply be dropped to cancel the context.
+/// You build a new Context by calling its [`new`](fn@Context::new)
+/// constructor, which returns the new [`Context`] along with a [`Handle`]. The [`Handle`] can
+/// either have its [`cancel`](fn@Context::cancel) method called, or it can simply be dropped to
+/// cancel the context.
 ///
 /// Please note that dropping the [`Handle`] **will** cancel the context.
 ///
-/// If the duration supplied during [`Context`] construction elapses, then the [`Context`] will
-/// also be cancelled.
+/// If you would like to create a Context that automatically cancels after a given duration has
+/// passed, use the [`with_timeout`](fn@Context::with_timeout) constructor. Using this
+/// constructor will still give you a handle that can be used to immediately cancel the context as
+/// well.
 ///
 /// # Examples
 ///
@@ -32,7 +34,7 @@ use tokio::time::Instant;
 /// async fn main() {
 ///     // We've decided that we want a long running asynchronous task to last for a maximum of 1
 ///     // second.
-///     let (mut ctx, _handle) = Context::new(Some(Duration::from_secs(1)));
+///     let (mut ctx, _handle) = Context::with_timeout(Duration::from_secs(1));
 ///     
 ///     tokio::select! {
 ///         _ = ctx.done() => return,
@@ -62,7 +64,7 @@ use tokio::time::Instant;
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let (_, mut handle) = Context::new(None);
+///     let (_, mut handle) = Context::new();
 ///
 ///     let mut join_handles = vec![];
 ///
@@ -123,7 +125,7 @@ pub struct Context {
 /// #[tokio::test]
 /// async fn cancelling_parent_ctx_cancels_child() {
 ///     // Note that we can't simply drop the handle here or the context will be cancelled.
-///     let (parent_ctx, parent_handle) = RefContext::new(None);
+///     let (parent_ctx, parent_handle) = RefContext::new();
 ///     let (mut ctx, _handle) = Context::with_parent(&parent_ctx, None);
 ///
 ///     parent_handle.cancel();
@@ -138,7 +140,7 @@ pub struct Context {
 /// #[tokio::test]
 /// async fn cancelling_child_ctx_doesnt_cancel_parent() {
 ///     // Note that we can't simply drop the handle here or the context will be cancelled.
-///     let (mut parent_ctx, _parent_handle) = RefContext::new(None);
+///     let (mut parent_ctx, _parent_handle) = RefContext::new();
 ///     let (_ctx, handle) = Context::with_parent(&parent_ctx, None);
 ///
 ///     handle.cancel();
@@ -153,7 +155,7 @@ pub struct Context {
 /// #[tokio::test]
 /// async fn parent_timeout_cancels_child() {
 ///     // Note that we can't simply drop the handle here or the context will be cancelled.
-///     let (parent_ctx, _parent_handle) = RefContext::new(Some(Duration::from_millis(5)));
+///     let (parent_ctx, _parent_handle) = RefContext::with_timeout(Duration::from_millis(5));
 ///     let (mut ctx, _handle) =
 ///         Context::with_parent(&parent_ctx, Some(Duration::from_millis(10)));
 ///
@@ -220,17 +222,24 @@ impl Handle {
 }
 
 impl Context {
-    /// Builds a new Context. The `done` method returns a future that will complete when
-    /// either the handle is cancelled, or when the optional timeout has elapsed.
-    pub fn new(timeout: Option<Duration>) -> (Context, Handle) {
-        let timeout = if let Some(t) = timeout {
-            Some(Instant::now() + t)
-        } else {
-            None
-        };
+    /// Builds a new Context without a timeout. The `done` method returns a future that will
+    /// complete when this context is cancelled.
+    pub fn new() -> (Context, Handle) {
         let (tx, _) = broadcast::channel(1);
         let mut handle = Handle {
-            timeout,
+            timeout: None,
+            cancel_sender: tx,
+            parent_ctx: None,
+        };
+        (handle.spawn_ctx(), handle)
+    }
+
+    /// Builds a new Context. The `done` method returns a future that will complete when
+    /// either the handle is cancelled, or when the supplied timeout has elapsed.
+    pub fn with_timeout(timeout: Duration) -> (Context, Handle) {
+        let (tx, _) = broadcast::channel(1);
+        let mut handle = Handle {
+            timeout: Some(Instant::now() + timeout),
             cancel_sender: tx,
             parent_ctx: None,
         };
@@ -304,8 +313,15 @@ impl Context {
 impl RefContext {
     /// Builds a new RefContext. The `done` method returns a future that will complete when
     /// either the handle is cancelled, or when the optional timeout has elapsed.
-    pub fn new(timeout: Option<Duration>) -> (RefContext, Handle) {
-        let (context, handle) = Context::new(timeout);
+    pub fn new() -> (RefContext, Handle) {
+        let (context, handle) = Context::new();
+        (RefContext::from(context), handle)
+    }
+
+    /// Builds a new Context. The `done` method returns a future that will complete when
+    /// either the handle is cancelled, or when the supplied timeout has elapsed.
+    pub fn with_timeout(timeout: Duration) -> (RefContext, Handle) {
+        let (context, handle) = Context::with_timeout(timeout);
         (RefContext::from(context), handle)
     }
 
@@ -342,7 +358,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_handle_cancels_context() {
-        let (mut ctx, handle) = Context::new(None);
+        let (mut ctx, handle) = Context::new();
 
         handle.cancel();
 
@@ -355,7 +371,7 @@ mod tests {
     #[tokio::test]
     async fn duration_cancels_context() {
         // Note that we can't simply drop the handle here or the context will be cancelled.
-        let (mut ctx, _handle) = Context::new(Some(Duration::from_millis(10)));
+        let (mut ctx, _handle) = Context::with_timeout(Duration::from_millis(10));
 
         tokio::select! {
             _ = ctx.done() => assert!(true),
@@ -366,7 +382,7 @@ mod tests {
     #[tokio::test]
     async fn cancelling_parent_ctx_cancels_child() {
         // Note that we can't simply drop the handle here or the context will be cancelled.
-        let (parent_ctx, parent_handle) = RefContext::new(None);
+        let (parent_ctx, parent_handle) = RefContext::new();
         let (mut ctx, _handle) = Context::with_parent(&parent_ctx, None);
 
         parent_handle.cancel();
@@ -381,7 +397,7 @@ mod tests {
     #[tokio::test]
     async fn cancelling_child_ctx_doesnt_cancel_parent() {
         // Note that we can't simply drop the handle here or the context will be cancelled.
-        let (mut parent_ctx, _parent_handle) = RefContext::new(None);
+        let (mut parent_ctx, _parent_handle) = RefContext::new();
         let (_ctx, handle) = Context::with_parent(&parent_ctx, None);
 
         handle.cancel();
@@ -396,7 +412,7 @@ mod tests {
     #[tokio::test]
     async fn parent_timeout_cancels_child() {
         // Note that we can't simply drop the handle here or the context will be cancelled.
-        let (parent_ctx, _parent_handle) = RefContext::new(Some(Duration::from_millis(5)));
+        let (parent_ctx, _parent_handle) = RefContext::with_timeout(Duration::from_millis(5));
         let (mut ctx, _handle) = Context::with_parent(&parent_ctx, Some(Duration::from_millis(10)));
 
         tokio::select! {

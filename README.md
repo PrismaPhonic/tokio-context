@@ -2,7 +2,7 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Released API docs](https://docs.rs/tokio-context/badge.svg)](https://docs.rs/tokio-context)
 
-## tokio-context
+# tokio-context
 
 Provides two different methods for cancelling futures with a provided handle for cancelling all
 related futures, with a fallback timeout mechanism. This is accomplished either with the
@@ -14,15 +14,15 @@ Provides Golang like Context functionality. A Context in this respect is an obje
 passed around, primarily to async functions, that is used to determine if long running
 asynchronous tasks should continue to run, or terminate.
 
-You build a new Context by calling its `Context::new` constructor, which optionally takes a
-duration that the context should run for. Calling the `Context::new` constructor returns the
-new `Context` along with a `Handle`. The `Handle` can either have its `cancel` method
-called, or it can simply be dropped to cancel the context.
+You build a new Context by calling its `new` constructor, which returns the new
+`Context` along with a `Handle`. The `Handle` can either have its `cancel`
+method called, or it can simply be dropped to cancel the context.
 
 Please note that dropping the `Handle` **will** cancel the context.
 
-If the duration supplied during `Context` construction elapses, then the `Context` will
-also be cancelled.
+If you would like to create a Context that automatically cancels after a given duration has
+passed, use the `with_timeout` constructor. Using this constructor will still
+give you a handle that can be used to immediately cancel the context as well.
 
 ## Examples
 
@@ -40,7 +40,7 @@ async fn task_that_takes_too_long() {
 async fn main() {
     // We've decided that we want a long running asynchronous task to last for a maximum of 1
     // second.
-    let (mut ctx, _handle) = Context::new(Some(Duration::from_secs(1)));
+    let (mut ctx, _handle) = Context::with_timeout(Duration::from_secs(1));
 
     tokio::select! {
         _ = ctx.done() => return,
@@ -70,7 +70,7 @@ async fn task_that_takes_too_long(mut ctx: Context) {
 
 #[tokio::main]
 async fn main() {
-    let (_, mut handle) = Context::new(None);
+    let (_, mut handle) = Context::new();
 
     let mut join_handles = vec![];
 
@@ -105,7 +105,7 @@ use tokio_context::context::RefContext;
 #[tokio::test]
 async fn cancelling_parent_ctx_cancels_child() {
     // Note that we can't simply drop the handle here or the context will be cancelled.
-    let (parent_ctx, parent_handle) = RefContext::new(None);
+    let (parent_ctx, parent_handle) = RefContext::new();
     let (mut ctx, _handle) = Context::with_parent(&parent_ctx, None);
 
     parent_handle.cancel();
@@ -120,7 +120,7 @@ async fn cancelling_parent_ctx_cancels_child() {
 #[tokio::test]
 async fn cancelling_child_ctx_doesnt_cancel_parent() {
     // Note that we can't simply drop the handle here or the context will be cancelled.
-    let (mut parent_ctx, _parent_handle) = RefContext::new(None);
+    let (mut parent_ctx, _parent_handle) = RefContext::new();
     let (_ctx, handle) = Context::with_parent(&parent_ctx, None);
 
     handle.cancel();
@@ -135,7 +135,7 @@ async fn cancelling_child_ctx_doesnt_cancel_parent() {
 #[tokio::test]
 async fn parent_timeout_cancels_child() {
     // Note that we can't simply drop the handle here or the context will be cancelled.
-    let (parent_ctx, _parent_handle) = RefContext::new(Some(Duration::from_millis(5)));
+    let (parent_ctx, _parent_handle) = RefContext::with_timeout(Duration::from_millis(5));
     let (mut ctx, _handle) =
         Context::with_parent(&parent_ctx, Some(Duration::from_millis(10)));
 
@@ -156,16 +156,17 @@ termination, which may not always be desired.
 
 ### TaskController
 
-Handles spawning tasks with a default timeout, which can also be cancelled by
-calling `cancel` on the task controller. If a `std::time::Duration` is supplied during
-construction of the TaskController, then any tasks spawned by the TaskController will
-automatically be cancelled after the supplied duration has elapsed.
+Handles spawning tasks which can also be cancelled by calling `cancel` on the
+task controller. If a `std::time::Duration` is supplied using the `with_timeout`
+constructor, then any tasks spawned by the TaskController will automatically be
+cancelled after the supplied duration has elapsed.
 
-This provides a different API from Context for the same end result. It's nicer to use when you
-don't need child futures to gracefully shutdown. In cases that you do require graceful shutdown
-of child futures, you will need to pass a Context down, and incorporate the context into normal
-program flow for the child function so that they can react to it as needed and perform custom
-asynchronous cleanup logic.
+This provides a different API from Context for the same end result. It's nicer
+to use when you don't need child futures to gracefully shutdown. In cases that
+you do require graceful shutdown of child futures, you will need to pass a
+Context down, and incorporate the context into normal program flow for the child
+function so that they can react to it as needed and perform custom asynchronous
+cleanup logic.
 
 ## Examples
 
@@ -181,7 +182,7 @@ async fn task_that_takes_too_long() {
 
 #[tokio::main]
 async fn main() {
-    let mut controller = TaskController::new(None);
+    let mut controller = TaskController::new();
 
     let mut join_handles = vec![];
 

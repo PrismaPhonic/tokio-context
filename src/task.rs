@@ -2,14 +2,14 @@ use std::{future::Future, time::Duration};
 use tokio::sync::broadcast::Sender;
 use tokio::{sync::broadcast, time::Instant};
 
-/// Handles spawning tasks with a default timeout, which can also be cancelled by
-/// calling `cancel` on the task controller. If a [`std::time::Duration`] is supplied during
-/// construction of the TaskController, then any tasks spawned by the TaskController will
-/// automatically be cancelled after the supplied duration has elapsed.
+/// Handles spawning tasks which can also be cancelled by calling `cancel` on the task controller.
+/// If a [`std::time::Duration`] is supplied using the
+/// [`with_timeout`](fn@TaskController::with_timeout) constructor, then any tasks spawned by the
+/// TaskController will automatically be cancelled after the supplied duration has elapsed.
 ///
 /// This provides a different API from Context for the same end result. It's nicer to use when you
 /// don't need child futures to gracefully shutdown. In cases that you do require graceful shutdown
-/// of child futures, you will need to pass a Context down, and encorporate the context into normal
+/// of child futures, you will need to pass a Context down, and incorporate the context into normal
 /// program flow for the child function so that they can react to it as needed and perform custom
 /// asynchronous cleanup logic.
 ///
@@ -27,7 +27,7 @@ use tokio::{sync::broadcast, time::Instant};
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let mut controller = TaskController::new(None);
+///     let mut controller = TaskController::new();
 ///
 ///     let mut join_handles = vec![];
 ///
@@ -56,17 +56,22 @@ impl TaskController {
     pub fn cancel(self) {}
 
     /// Constructs a new TaskController, which can be used to spawn tasks. Tasks spawned from the
-    /// task controller will be cancelled if `cancel()` gets called. They will also be cancelled if
-    /// a supplied timeout elapses.
-    pub fn new(timeout: Option<Duration>) -> TaskController {
-        let timeout = if let Some(t) = timeout {
-            Some(Instant::now() + t)
-        } else {
-            None
-        };
+    /// task controller will be cancelled if `cancel()` gets called.
+    pub fn new() -> TaskController {
         let (tx, _) = broadcast::channel(1);
         TaskController {
-            timeout,
+            timeout: None,
+            cancel_sender: tx,
+        }
+    }
+
+    /// Constructs a new TaskController, which can be used to spawn tasks. Tasks spawned from the
+    /// task controller will be cancelled if `cancel()` gets called. They will also be cancelled if
+    /// a supplied timeout elapses.
+    pub fn with_timeout(timeout: Duration) -> TaskController {
+        let (tx, _) = broadcast::channel(1);
+        TaskController {
+            timeout: Some(Instant::now() + timeout),
             cancel_sender: tx,
         }
     }
@@ -107,7 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_handle_cancels_task() {
-        let mut controller = TaskController::new(None);
+        let mut controller = TaskController::new();
         let join = controller.spawn(async { tokio::time::sleep(Duration::from_secs(60)).await });
         controller.cancel();
 
@@ -119,7 +124,7 @@ mod tests {
 
     #[tokio::test]
     async fn duration_cancels_task() {
-        let mut controller = TaskController::new(Some(Duration::from_millis(10)));
+        let mut controller = TaskController::with_timeout(Duration::from_millis(10));
         let join = controller.spawn(async { tokio::time::sleep(Duration::from_secs(60)).await });
 
         tokio::select! {
