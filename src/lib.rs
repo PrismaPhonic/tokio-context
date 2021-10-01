@@ -46,7 +46,7 @@
 //! ```
 //!
 //! While this may look no different than simply using tokio::time::timeout, we have retained a
-//! handle that we can use to explicitely cancel the context, and any additionally spawned
+//! handle that we can use to explicitly cancel the context, and any additionally spawned
 //! contexts.
 //!
 //!

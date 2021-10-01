@@ -46,7 +46,7 @@
 /// ```
 ///
 /// While this may look no different than simply using tokio::time::timeout, we have retained a
-/// handle that we can use to explicitely cancel the context, and any additionally spawned
+/// handle that we can use to explicitly cancel the context, and any additionally spawned
 /// contexts.
 ///
 ///
@@ -151,7 +151,7 @@ pub struct Context {
 }
 
 /// A handle returned from constructing a new `Context`. Used to cancel the context. You can
-/// explicitely call `cancel()`, or, you can simply drop the Handle to cancel the context.
+/// explicitly call `cancel()`, or, you can simply drop the Handle to cancel the context.
 ///
 /// It's also used to spawn new contexts. This fits cleaner into Rusts ownership system. We can
 /// only create new receivers by asking for them from the underlying Sender. This also ensures that
@@ -185,7 +185,7 @@ impl Handle {
 
 impl Context {
     /// Builds a new Context. The done() method returns a future that will complete when
-    /// either the cancel signal is cancelled, or when the optional timeout has elapsed.
+    /// either the handle is cancelled, or when the optional timeout has elapsed.
     pub fn new(timeout: Option<Duration>) -> (Context, Handle) {
         let timeout = if let Some(t) = timeout {
             Some(Instant::now() + t)
@@ -201,7 +201,7 @@ impl Context {
     }
 
     /// Blocks until either the provided timeout elapses, or a cancel signal is received from
-    /// calling cancel() on the CancelHandle that was returned during initial construction.
+    /// calling cancel() on the Handle that was returned during initial construction.
     #[allow(unused_must_use)] // We expect a receive error that the channel was closed.
     pub async fn done(&mut self) {
         if let Some(instant) = self.timeout {
