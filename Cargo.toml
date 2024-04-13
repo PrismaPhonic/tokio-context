@@ -9,7 +9,7 @@ repository = "https://github.com/PrismaPhonic/tokio-context"
 documentation = "https://docs.rs/tokio-context"
 readme = "README.md"
 license = "MIT"
-edition = "2018"
+edition = "2021"
 include = [
     "**/*.rs",
     "Cargo.toml",
@@ -20,7 +20,7 @@ include = [
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-tokio = { version = "1.12.0", features = ["macros", "sync", "time"] }
+tokio = { version = "1.28.2", features = ["macros", "sync", "time", "rt"] }
 
 [dev-dependencies]
-tokio = { version = "1.12.0", features = ["macros", "sync", "time", "rt", "rt-multi-thread"] }
+tokio = { version = "1.28.2", features = ["macros", "sync", "time", "rt", "rt-multi-thread"] }
