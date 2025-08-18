@@ -336,7 +336,7 @@ impl RefContext {
 
     /// Blocks until either the provided timeout elapses, or a cancel signal is received from
     /// calling `cancel` on the Handle that was returned during initial construction.
-    pub fn done(&mut self) -> Pin<Box<dyn Future<Output = ()> + '_>> {
+    pub fn done(&mut self) -> Pin<Box<dyn Future<Output = ()> + '_ + Send>> {
         let soft_copy = self.clone();
         Box::pin(async move {
             let mut inner = soft_copy.0.lock().await;
@@ -420,4 +420,34 @@ mod tests {
             _ = tokio::time::sleep(Duration::from_millis(7)) => assert!(false),
         }
     }
+
+    #[tokio::test]
+    async fn missing_send_trait_done_of_ref_context() {
+        // Fixing: the return value of `RefContext.done()` is missing "Send" trait
+        let (mut parent_ctx, parent_handle) = RefContext::new();
+
+        // move RefContext's instance to child task
+        let child = tokio::spawn(async move {
+            tokio::select! {
+                _ = parent_ctx.done() => {
+                    println!("parent task got cancel");
+                    return;
+                },
+                _ = task_that_takes_too_long() => assert!(false),
+            }
+        });
+
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            parent_handle.cancel();
+        });
+
+        child.await.expect("Failed to join!");
+    }
+
+    async fn task_that_takes_too_long() {
+        tokio::time::sleep(Duration::from_secs(1000)).await;
+        println!("done");
+    }
+
 }
